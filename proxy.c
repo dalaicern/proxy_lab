@@ -104,9 +104,6 @@ void doit(int fd) {
         return;
     }
     
-    
-    
-    
     parse_uri(uri, hostname, path, &port);
     
     

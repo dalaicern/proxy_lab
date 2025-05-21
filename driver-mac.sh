@@ -129,7 +129,7 @@ function free_port {
 #
 
 # Kill any stray proxies or tiny servers owned by this user
-killall -q proxy tiny nop-server-mac.py 2> /dev/null
+killall -q proxy tiny nop-server.py 2> /dev/null
 
 # Make sure we have a Tiny directory
 if [ ! -d ./tiny ]
@@ -168,10 +168,10 @@ then
     exit
 fi
 
-# Make sure we have an existing executable nop-server-mac.py file
-if [ ! -x ./nop-server-mac.py ]
+# Make sure we have an existing executable nop-server.py file
+if [ ! -x ./nop-server.py ]
 then 
-    echo "Error: ./nop-server-mac.py not found or not an executable file."
+    echo "Error: ./nop-server.py not found or not an executable file."
     exit
 fi
 
@@ -282,18 +282,18 @@ proxy_pid=$!
 # Wait for the proxy to start in earnest
 wait_for_port_use "${proxy_port}"
 
-# Run a special blocking nop-server-mac that never responds to requests
+# Run a special blocking nop-server that never responds to requests
 nop_port=$(free_port)
 echo "Starting the blocking NOP server on port ${nop_port}"
-./nop-server-mac.py ${nop_port} &> /dev/null &
+./nop-server.py ${nop_port} &> /dev/null &
 nop_pid=$!
 
 # Wait for the nop server to start in earnest
 wait_for_port_use "${nop_port}"
 
-# Try to fetch a file from the blocking nop-server-mac using the proxy
+# Try to fetch a file from the blocking nop-server using the proxy
 clear_dirs
-echo "Trying to fetch a file from the blocking nop-server-mac"
+echo "Trying to fetch a file from the blocking nop-server"
 download_proxy $PROXY_DIR "nop-file.txt" "http://localhost:${nop_port}/nop-file.txt" "http://localhost:${proxy_port}" &
 
 # Fetch directly from Tiny
@@ -316,7 +316,7 @@ else
 fi
 
 # Clean up
-echo "Killing tiny, proxy, and nop-server-mac"
+echo "Killing tiny, proxy, and nop-server"
 kill $tiny_pid 2> /dev/null
 wait $tiny_pid 2> /dev/null
 kill $proxy_pid 2> /dev/null
