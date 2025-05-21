@@ -76,6 +76,16 @@ void *thread(void *vargp) {
     return NULL;
 }
 
+void print_cache() {
+    sem_wait(&cache.sem);
+    printf("=== Cache dump (total_size=%zu) ===\n", cache.total_size);
+    for (cache_line_t *p = cache.head; p; p = p->next) {
+        printf("  %s : %zu bytes\n", p->uri, p->object_size);
+    }
+    printf("=== end cache ===\n");
+    sem_post(&cache.sem);
+}
+
 
 void doit(int fd) {
     char buf[MAXLINE], method[MAXLINE], uri[MAXLINE], version[MAXLINE];
@@ -84,7 +94,6 @@ void doit(int fd) {
     int port;
     size_t object_size = 0;
     rio_t rio, server_rio;
-    
     
     Rio_readinitb(&rio, fd);
     if (!Rio_readlineb(&rio, buf, MAXLINE))
@@ -98,14 +107,15 @@ void doit(int fd) {
         return;
     }
     
+    parse_uri(uri, hostname, path, &port);
+    char canonical_uri[MAXLINE];
+    sprintf(canonical_uri, "http://%s:%d%s", hostname, port, path);
+    
     size_t cached_size;
-    if (cache_lookup(uri, object_buf, &cached_size)) {
+    if (cache_lookup(canonical_uri, object_buf, &cached_size)) {
         Rio_writen(fd, object_buf, cached_size);
         return;
     }
-    
-    parse_uri(uri, hostname, path, &port);
-    
     
     int serverfd = connect_toserver(hostname, port);
     if (serverfd < 0) {
@@ -113,12 +123,10 @@ void doit(int fd) {
         return;
     }
     
-    
     char request_hdr[MAXLINE];
     http_header(request_hdr, hostname, &rio, path);
     Rio_readinitb(&server_rio, serverfd);
     Rio_writen(serverfd, request_hdr, strlen(request_hdr));
-    
     
     char response_buf[MAX_OBJECT_SIZE];
     size_t n;
@@ -127,22 +135,18 @@ void doit(int fd) {
     while ((n = Rio_readlineb(&server_rio, buf, MAXLINE)) != 0) {
         printf("Proxy received %d bytes from server\n", (int)n);
         
-        
         if (total_size + n <= MAX_OBJECT_SIZE) {
             memcpy(response_buf + total_size, buf, n);
             total_size += n;
         } else {
-            
             total_size = MAX_OBJECT_SIZE + 1;
         }
-        
         
         Rio_writen(fd, buf, n);
     }
     
-    
     if (total_size <= MAX_OBJECT_SIZE) {
-        cache_uri(uri, response_buf, total_size);
+        cache_uri(canonical_uri, response_buf, total_size);
     }
     
     Close(serverfd);
@@ -237,11 +241,11 @@ int cache_lookup(char *uri, char *object, size_t *size) {
             *size = p->object_size;
 
             if (p != cache.head) {
-                if (p->next) 
-                    p->next->prev = p->prev;
-
                 if (p->prev) 
                     p->prev->next = p->next;
+
+                if (p->next) 
+                    p->next->prev = p->prev;
 
                 if (p == cache.tail) 
                     cache.tail = p->prev;
@@ -286,7 +290,7 @@ void cache_uri(char *uri, char *object, size_t obj_size) {
         Free(evict->object);
         Free(evict);
         
-        printf("Evicted cache item\n");
+        printf("Deleted cache item\n");
     }
     
     
@@ -311,4 +315,5 @@ void cache_uri(char *uri, char *object, size_t obj_size) {
     
     sem_post(&cache.sem);
     printf("Added to cache: %s ---> %zu bytes\n", uri, obj_size);
+    print_cache();
 }
